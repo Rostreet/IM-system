@@ -31,7 +31,30 @@ func (this *Server) Handler(conn net.Conn) {
 	this.mapLock.Unlock()
 	//增加消息
 	this.AddMessage(user, "已上线")
+	//接收客户端发来的消息
 
+	go func(){
+		buf := make([]byte, 4096)
+		for {
+			n, err := conn.Read(buf)
+			if n == 0 {
+				this.AddMessage(user, "已下线")
+				//用户下线，将用户从在线列表中删除
+				this.mapLock.Lock()
+				delete(this.OnlineMap, user.Name)
+				this.mapLock.Unlock()
+				return
+			}
+			if err != nil {
+				fmt.Println("conn read err:", err)
+				return
+			}
+			//提取用户的消息（去除'\n'）
+			msg := string(buf[:n-1])
+			//广播消息
+			this.AddMessage(user, msg)
+		}
+	}()
 	//阻塞
 	select {}
 }
@@ -71,6 +94,7 @@ func (this *Server) Start() {
 		//handler
 		//每有一个新的链接，就启动一个独立的goroutine进行处理
 		go this.Handler(conn)
+
 	}
 }
 
