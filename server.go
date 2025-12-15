@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 )
 
 type Server struct {
@@ -26,8 +27,9 @@ func (this *Server) Handler(conn net.Conn) {
 	//用户上线
 	user := NewUser(conn, this)
 	user.Online()
-	//接收客户端发来的消息
-
+	//监听用户是否活跃的 channel
+	isLive := make(chan bool)
+	//接收用户发送的消息
 	go func() {
 		buf := make([]byte, 4096)
 		for {
@@ -45,10 +47,22 @@ func (this *Server) Handler(conn net.Conn) {
 			msg := string(buf[:n-1])
 			//广播消息
 			user.SendMsg(msg)
+			//用户的任意消息，代表当前用户是活跃的
+			isLive <- true
 		}
 	}()
 	//阻塞
-	select {}
+	select {
+	case <-isLive:
+		//什么都不用做，会先判断是否活跃，如果活跃会自动进入下一个循环，重置定时器
+	case <-time.After(time.Minute * 10):
+		//如果进入当前循环，代表已经超时
+		user.SendMsg(user.Name + " 被踢出下线（长时间未活跃）")
+		//销毁用的资源
+		close(user.C)
+		//关闭连接
+		conn.Close()
+	}
 }
 
 // 监听广播，一旦有消息，就发送给全部
