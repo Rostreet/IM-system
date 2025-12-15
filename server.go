@@ -24,13 +24,8 @@ func (this *Server) AddMessage(user *User, msg string) {
 func (this *Server) Handler(conn net.Conn) {
 	//...当前链接的业务
 	//用户上线
-	user := NewUser(conn)
-	//将用户加入到在线用户列表
-	this.mapLock.Lock()
-	this.OnlineMap[user.Name] = user
-	this.mapLock.Unlock()
-	//增加消息
-	this.AddMessage(user, "已上线")
+	user := NewUser(conn,this)
+	user.Online()
 	//接收客户端发来的消息
 
 	go func(){
@@ -38,13 +33,10 @@ func (this *Server) Handler(conn net.Conn) {
 		for {
 			n, err := conn.Read(buf)
 			if n == 0 {
-				this.AddMessage(user, "已下线")
-				//用户下线，将用户从在线列表中删除
-				this.mapLock.Lock()
-				delete(this.OnlineMap, user.Name)
-				this.mapLock.Unlock()
+				//用户下线
+				user.Offline()
 				return
-			}
+}
 			if err != nil {
 				fmt.Println("conn read err:", err)
 				return
@@ -52,8 +44,8 @@ func (this *Server) Handler(conn net.Conn) {
 			//提取用户的消息（去除'\n'）
 			msg := string(buf[:n-1])
 			//广播消息
-			this.AddMessage(user, msg)
-		}
+			user.SendMsg(msg)
+	}
 	}()
 	//阻塞
 	select {}
