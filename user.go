@@ -15,9 +15,9 @@ func NewUser(conn net.Conn, server *Server) *User {
 	user := &User{
 		Name:   userAddr,
 		Addr:   userAddr,
-		C:      make(chan string),
+		C:      make(chan string, 16),
 		Conn:   conn,
-		Server: nil,
+		Server: server,
 	}
 	//启动监听
 	go user.ListenMessage()
@@ -29,7 +29,6 @@ func NewUser(conn net.Conn, server *Server) *User {
 func (this *User) ListenMessage() {
 	for {
 		msg := <-this.C
-
 		_, err := this.Conn.Write([]byte(msg + "\n"))
 		if err != nil {
 			// 连接写入失败，退出循环
@@ -58,5 +57,20 @@ func (this *User) Offline() {
 
 // 发送消息
 func (this *User) SendMsg(msg string) {
-	this.Server.AddMessage(this, msg)
+	if msg == "who" {
+		//查询当前在线用户都有谁（先快照，避免持锁期间阻塞发送）
+		this.Server.mapLock.RLock()
+		users := make([]*User, 0, len(this.Server.OnlineMap))
+		for _, user := range this.Server.OnlineMap {
+			users = append(users, user)
+		}
+		this.Server.mapLock.RUnlock()
+
+		for _, user := range users {
+			onlineMsg := "[" + user.Addr + "]" + user.Name + ":在线..."
+			this.C <- onlineMsg
+		}
+	} else {
+		this.Server.AddMessage(this, msg)
+	}
 }
